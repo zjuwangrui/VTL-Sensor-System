@@ -24,6 +24,20 @@ NameNetsHierarchically=0
 PowerPortNamesTakePriority=0
 PushECOToAnnotationFile=1
 
+[Document1]
+DocumentPath=VTL Sensor System.SchDoc
+AnnotationEnabled=1
+AnnotateStartValue=1
+AnnotationIndexControlEnabled=0
+AnnotateSuffix=
+AnnotateScope=All
+AnnotateOrder=-1
+DoLibraryUpdate=1
+DoDatabaseUpdate=1
+ClassGenCCAutoEnabled=1
+ClassGenCCAutoRoomEnabled=1
+ClassGenNCAutoScope=None
+
 [OutputGroup1]
 Name=Netlist Outputs
 Description=
