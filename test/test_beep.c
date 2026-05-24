@@ -1,6 +1,6 @@
 #include "stm32f1xx_hal.h"
 #include <stdio.h>
-
+#include "stm32f10x.h" 
 // 蜂鸣器引脚定义
 #define BEEP_PIN                    GPIO_PIN_8      // PA8引脚
 #define BEEP_PORT                   GPIOA           // GPIOA端口
@@ -16,6 +16,7 @@ static void Beep_Init(void);        // 蜂鸣器初始化
 static void Beep_On(void);          // 蜂鸣器开启
 static void Beep_Off(void);         // 蜂鸣器关闭
 static void SystemClock_Config(void); // 系统时钟配置
+static void led_on(void);
 
 int main(void)
 {
@@ -32,10 +33,11 @@ int main(void)
     while (1)
     {
         // 方法1：使用延时实现固定频率鸣叫（1秒周期）
-        Beep_On();              // 蜂鸣器开启（低电平）
+        Beep_On();              // 蜂鸣器开启（高电平）
         HAL_Delay(500);         // 持续500毫秒
-        Beep_Off();             // 蜂鸣器关闭（高电平）
+        Beep_Off();             // 蜂鸣器关闭（低电平）
         HAL_Delay(500);         // 停止500毫秒
+		led_on();
     }
 }
 
@@ -172,4 +174,11 @@ void Error_Handler(void)
         HAL_GPIO_TogglePin(BEEP_PORT, BEEP_PIN);
         HAL_Delay(100);
     }
+}
+void led_on(void)
+{
+	RCC_APB2ENR |= (1 << 3);
+	GPIOB_CRL &= ~(0x0F << (4 * 0));
+	GPIOB_CRL |= (1 << 4 * 0);
+	GPIOB_ODR &= (1 << 0);
 }

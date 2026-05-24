@@ -28,5 +28,11 @@ void Usart_SendString(uint8_t *str);
 void DEBUG_USART_Config(void);
 int fputc(int ch, FILE *f);
 int fgetc(FILE *f);
+
 extern UART_HandleTypeDef UartHandle;
+
+#define BUFFSIZE 100
+extern char RxBuff[BUFFSIZE];
+extern uint32_t Rxlen;
+extern uint8_t Rxflag;
 #endif /* __USART1_H */

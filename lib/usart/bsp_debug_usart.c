@@ -18,6 +18,11 @@
 #include "bsp_debug_usart.h"
 
 UART_HandleTypeDef UartHandle;
+
+char RxBuff[BUFFSIZE];
+uint32_t Rxlen= 0;
+uint8_t  Rxflag;
+
 //extern uint8_t ucTemp;  
 
  /**
@@ -38,9 +43,13 @@ void DEBUG_USART_Config(void)
   UartHandle.Init.Mode         = UART_MODE_TX_RX;
   
   HAL_UART_Init(&UartHandle);
-   
+    
  /*ʹ�ܴ��ڽ��ն� */
- // __HAL_UART_ENABLE_IT(&UartHandle,UART_IT_RXNE);  
+  __HAL_UART_ENABLE_IT(&UartHandle,UART_IT_RXNE); 
+	
+	/*ʹ�ܴ��ڿ����ж� */
+  __HAL_UART_ENABLE_IT(&UartHandle,UART_IT_IDLE);  	
+	__HAL_UART_CLEAR_IDLEFLAG(&UartHandle);
 }
 
 
@@ -74,8 +83,8 @@ void HAL_UART_MspInit(UART_HandleTypeDef *huart)
   GPIO_InitStruct.Mode=GPIO_MODE_AF_INPUT;	//ģʽҪ����Ϊ��������ģʽ��	
   HAL_GPIO_Init(DEBUG_USART_RX_GPIO_PORT, &GPIO_InitStruct); 
  
-  //HAL_NVIC_SetPriority(DEBUG_USART_IRQ ,0,1);	//��ռ���ȼ�0�������ȼ�1
- // HAL_NVIC_EnableIRQ(DEBUG_USART_IRQ );		    //ʹ��USART1�ж�ͨ��  
+  HAL_NVIC_SetPriority(DEBUG_USART_IRQ ,0,1);	//��ռ���ȼ�0�������ȼ�1
+  HAL_NVIC_EnableIRQ(DEBUG_USART_IRQ );		    //ʹ��USART1�ж�ͨ��  
 }
 
 
@@ -93,7 +102,7 @@ void Usart_SendString(uint8_t *str)
 //�ض���c�⺯��printf������DEBUG_USART���ض�����ʹ��printf����
 int fputc(int ch, FILE *f)
 {
-	/* ����һ���ֽ����ݵ�����DEBUG_USART */
+
 	HAL_UART_Transmit(&UartHandle, (uint8_t *)&ch, 1, 1000);	
 	
 	return (ch);

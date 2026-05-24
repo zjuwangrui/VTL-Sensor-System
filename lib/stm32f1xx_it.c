@@ -1,16 +1,14 @@
-/** 
+/**
   ******************************************************************************
-  * @file    GPIO/GPIO_IOToggle/Src/stm32f1xx_it.c
+  * @file    GPIO/GPIO_EXTI/Src/stm32f4xx_it.c 
   * @author  MCD Application Team
-  * @version V1.5.0
-  * @date    14-April-2017
   * @brief   Main Interrupt Service Routines.
-  *          This file provides template for all exceptions handler and
+  *          This file provides template for all exceptions handler and 
   *          peripherals interrupt service routine.
   ******************************************************************************
   * @attention
   *
-  * <h2><center>&copy; COPYRIGHT(c) 2016 STMicroelectronics</center></h2>
+  * <h2><center>&copy; COPYRIGHT(c) 2017 STMicroelectronics</center></h2>
   *
   * Redistribution and use in source and binary forms, with or without modification,
   * are permitted provided that the following conditions are met:
@@ -40,12 +38,13 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stm32f1xx_it.h"
+#include "./usart/bsp_debug_usart.h"
 
-/** @addtogroup STM32F1xx_HAL_Examples
+/** @addtogroup STM32F4xx_HAL_Examples
   * @{
   */
 
-/** @addtogroup GPIO_IOToggle
+/** @addtogroup GPIO_EXTI
   * @{
   */
 
@@ -53,12 +52,11 @@
 /* Private define ------------------------------------------------------------*/
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
-
 /* Private function prototypes -----------------------------------------------*/
 /* Private functions ---------------------------------------------------------*/
 
 /******************************************************************************/
-/*            Cortex-M3 Processor Exceptions Handlers                         */
+/*            Cortex-M4 Processor Exceptions Handlers                         */
 /******************************************************************************/
 
 /**
@@ -163,9 +161,35 @@ void SysTick_Handler(void)
 /*                 STM32F1xx Peripherals Interrupt Handlers                   */
 /*  Add here the Interrupt Handler for the used peripheral(s) (PPP), for the  */
 /*  available peripheral interrupt handler's name please refer to the startup */
-/*  file (startup_stm32f1xx.s).                                               */
+/*  file (startup_stm32f4xx.s).                                               */
 /******************************************************************************/
 
+/**
+  * @brief  This function handles External line 0 interrupt request.
+  * @param  None
+  * @retval None
+  */
+void EXTI0_IRQHandler(void)
+{
+  
+}
+
+
+void  DEBUG_USART_IRQHandler(void)
+{
+	if(__HAL_UART_GET_FLAG(&UartHandle, UART_FLAG_IDLE ) != RESET) //中断中判断产生了空闲中断标志认为一轮结束
+	{				
+		Rxflag = 1;
+		Rxlen += BUFFSIZE - UartHandle.RxXferCount;    //累计达不到BUFFSIZE个数的部分
+		
+		__HAL_UART_CLEAR_IDLEFLAG(&UartHandle);
+		HAL_UART_AbortReceive_IT(&UartHandle);      
+		
+		return ;
+	}	
+	
+	HAL_UART_IRQHandler(&UartHandle);	
+}
 /**
   * @brief  This function handles PPP interrupt request.
   * @param  None
@@ -175,10 +199,9 @@ void SysTick_Handler(void)
 {
 }*/
 
-
 /**
   * @}
-  */
+  */ 
 
 /**
   * @}
