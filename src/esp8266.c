@@ -183,10 +183,10 @@ ESP_Result ESP_Init(void)
 
 ESP_Result ESP_PostSensor(float voltage, bool led_on, float *out_thr)
 {
-    char body[48];
-    char request[256];
-    char cmd_buf[48];
-    char response[768];
+    static char body[48];
+    static char request[256];
+    static char cmd_buf[48];
+    static char response[768];
 
     // 构造JSON body
     snprintf(body, sizeof(body), "{\"v\":%.3f,\"led\":%d}", voltage, led_on ? 1 : 0);

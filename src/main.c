@@ -22,9 +22,10 @@
 /* USER CODE BEGIN Includes */
 #include "esp8266.h"
 #include "stm32f1xx_hal.h"
-#include "uart.h"   /* huart1, huart2, MX_USART1/2_UART_Init, UART_Printf */
-#include "adc.h"    /* hadc1, MX_ADC1_Init                                */
-#include "gpio.h"   /* MX_GPIO_Init                                       */
+#include "uart.h"
+#include "adc.h"
+#include "gpio.h"
+#include "lcd.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
@@ -42,25 +43,35 @@
 /* ===== 调试打印（通过USART1发到PC，可用串口助手查看） ===== */
 #define DBG(fmt, ...) UART_Printf("[%6lu] " fmt "\r\n", HAL_GetTick(), ##__VA_ARGS__)
 
-/* ===== 系统时钟：HSE 8MHz × PLL×9 = 72MHz ===== */
+/* ===== 系统时钟：HSE 8MHz × PLL×9 = 72MHz，HSE 失败则回退 HSI ===== */
 void SystemClock_Config(void)
 {
     RCC_OscInitTypeDef osc = {0};
-    osc.OscillatorType      = RCC_OSCILLATORTYPE_HSE;
-    osc.HSEState            = RCC_HSE_ON;
-    osc.PLL.PLLState        = RCC_PLL_ON;
-    osc.PLL.PLLSource       = RCC_PLLSOURCE_HSE;
-    osc.PLL.PLLMUL          = RCC_PLL_MUL9;        /* 8 × 9 = 72 MHz */
-    if (HAL_RCC_OscConfig(&osc) != HAL_OK)
-        while (1);
-
     RCC_ClkInitTypeDef clk = {0};
+
+    /* 先尝试 HSE 8MHz × PLL×9 = 72MHz */
+    osc.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+    osc.HSEState       = RCC_HSE_ON;
+    osc.PLL.PLLState   = RCC_PLL_ON;
+    osc.PLL.PLLSource  = RCC_PLLSOURCE_HSE;
+    osc.PLL.PLLMUL     = RCC_PLL_MUL9;
+    if (HAL_RCC_OscConfig(&osc) != HAL_OK) {
+        /* HSE 起振失败，回退 HSI/2 × PLL×16 = 64MHz */
+        osc.OscillatorType          = RCC_OSCILLATORTYPE_HSI;
+        osc.HSIState                = RCC_HSI_ON;
+        osc.HSICalibrationValue     = RCC_HSICALIBRATION_DEFAULT;
+        osc.PLL.PLLSource           = RCC_PLLSOURCE_HSI_DIV2;
+        osc.PLL.PLLMUL              = RCC_PLL_MUL16;
+        if (HAL_RCC_OscConfig(&osc) != HAL_OK)
+            while (1);
+    }
+
     clk.ClockType      = RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK |
                          RCC_CLOCKTYPE_PCLK1  | RCC_CLOCKTYPE_PCLK2;
     clk.SYSCLKSource   = RCC_SYSCLKSOURCE_PLLCLK;
     clk.AHBCLKDivider  = RCC_SYSCLK_DIV1;
-    clk.APB1CLKDivider = RCC_HCLK_DIV2;   /* APB1 36 MHz（含 USART2） */
-    clk.APB2CLKDivider = RCC_HCLK_DIV1;   /* APB2 72 MHz（含 USART1, ADC） */
+    clk.APB1CLKDivider = RCC_HCLK_DIV2;
+    clk.APB2CLKDivider = RCC_HCLK_DIV1;
     if (HAL_RCC_ClockConfig(&clk, FLASH_LATENCY_2) != HAL_OK)
         while (1);
 }
@@ -87,8 +98,9 @@ int main(void)
     SystemClock_Config();
     MX_GPIO_Init();
     MX_ADC1_Init();
-    MX_USART1_UART_Init(); // 调试口
-    MX_USART3_UART_Init(); // ESP8266
+    MX_USART1_UART_Init();
+    MX_USART3_UART_Init();
+    LCD_DisplayInit();
 
     /* --- 上电状态：两个LED全灭 --- */
     LED_OFF(LED_RED_PORT,   LED_RED_PIN);
@@ -96,6 +108,7 @@ int main(void)
 
     /* --- 初始化ESP8266（阻塞，最长约15s） --- */
     DBG("ESP8266 initializing...");
+    LCD_ShowBoot();
     ESP_Result init_result;
     uint8_t retry = 0;
     do {
@@ -107,7 +120,7 @@ int main(void)
 
     if (init_result == ESP_OK) {
         DBG("ESP8266 AP ready: SSID=%s", AP_SSID);
-        // 用绿灯闪烁3次表示ESP初始化成功
+        LCD_ShowWiFiStatus(true);
         for (int i = 0; i < 3; i++) {
             LED_ON(LED_GREEN_PORT, LED_GREEN_PIN);
             HAL_Delay(200);
@@ -115,8 +128,8 @@ int main(void)
             HAL_Delay(200);
         }
     } else {
-        // ESP初始化失败：红灯快闪
         DBG("ESP8266 init FAILED");
+        LCD_ShowESPFail();
         for (;;) {
             LED_ON(LED_RED_PORT, LED_RED_PIN);
             HAL_Delay(100);
@@ -139,19 +152,20 @@ int main(void)
         voltage = ADC_ReadVoltage();
 
         /* 2. 与阈值比较，驱动LED */
-        bool new_led = (voltage < threshold);
+        bool new_led = (voltage > threshold);
         if (new_led != led_on) {
             led_on = new_led;
             if (led_on) {
                 LED_ON(LED_RED_PORT, LED_RED_PIN);
                 LED_OFF(LED_GREEN_PORT, LED_GREEN_PIN);
-                DBG("LED ON  V=%.3f < THR=%.3f", voltage, threshold);
             } else {
                 LED_OFF(LED_RED_PORT, LED_RED_PIN);
                 LED_ON(LED_GREEN_PORT, LED_GREEN_PIN);
-                DBG("LED OFF V=%.3f >= THR=%.3f", voltage, threshold);
             }
         }
+
+        /* 3. 刷新LCD（每次循环都更新，频率由ADC+通信自然限速） */
+        LCD_UpdateSensor(voltage, threshold, led_on);
 
         /* 3. 定时向手机发送数据，取回阈值 */
         if (HAL_GetTick() - last_send_tick >= SEND_INTERVAL_MS) {

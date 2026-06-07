@@ -116,6 +116,7 @@
                 "PLATFORMIO=60119",
                 "STM32F103xE",
                 "STM32F1",
+                "HAL_SRAM_MODULE_ENABLED",
                 "USE_HAL_DRIVER",
                 "F_CPU=72000000L",
                 ""
