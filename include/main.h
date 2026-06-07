@@ -43,7 +43,6 @@
 #include "stm32f1xx_hal.h"
 
 void SystemClock_Config(void);
-void led_on(void);
 /* Exported types ------------------------------------------------------------*/
 /* Exported constants --------------------------------------------------------*/
 /* Exported macro ------------------------------------------------------------*/

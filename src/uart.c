@@ -1,44 +1,85 @@
 #include "uart.h"
-#include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
+#include <stdio.h>
 
 UART_HandleTypeDef huart1;
+UART_HandleTypeDef huart3;
 
 static char _printf_buf[UART_PRINTF_BUF_SZ];
 
-void UART_Init(void)
+/* ------------------------------------------------------------------ */
+/*  MX_USART1_UART_Init — 调试口  PA9(TX) / PA10(RX)  115200 8N1     */
+/* ------------------------------------------------------------------ */
+void MX_USART1_UART_Init(void)
 {
     __HAL_RCC_GPIOA_CLK_ENABLE();
     __HAL_RCC_USART1_CLK_ENABLE();
 
     GPIO_InitTypeDef gpio = {0};
 
-    /* PA9 — TX, alternate function push-pull */
-    gpio.Pin   = UART_TX_PIN;
+    gpio.Pin   = GPIO_PIN_9;          /* PA9  TX */
     gpio.Mode  = GPIO_MODE_AF_PP;
     gpio.Speed = GPIO_SPEED_FREQ_HIGH;
-    HAL_GPIO_Init(UART_GPIO_PORT, &gpio);
+    HAL_GPIO_Init(GPIOA, &gpio);
 
-    /* PA10 — RX, input floating */
-    gpio.Pin  = UART_RX_PIN;
-    gpio.Mode = GPIO_MODE_INPUT;
-    gpio.Pull = GPIO_NOPULL;
-    HAL_GPIO_Init(UART_GPIO_PORT, &gpio);
+    gpio.Pin   = GPIO_PIN_10;         /* PA10 RX */
+    gpio.Mode  = GPIO_MODE_INPUT;
+    gpio.Pull  = GPIO_NOPULL;
+    HAL_GPIO_Init(GPIOA, &gpio);
 
-    huart1.Instance          = UART_INSTANCE;
-    huart1.Init.BaudRate     = UART_BAUDRATE;
+    huart1.Instance          = USART1;
+    huart1.Init.BaudRate     = 115200;
     huart1.Init.WordLength   = UART_WORDLENGTH_8B;
     huart1.Init.StopBits     = UART_STOPBITS_1;
     huart1.Init.Parity       = UART_PARITY_NONE;
     huart1.Init.Mode         = UART_MODE_TX_RX;
     huart1.Init.HwFlowCtl    = UART_HWCONTROL_NONE;
     huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-
     if (HAL_UART_Init(&huart1) != HAL_OK)
         while (1);
 }
 
+/* ------------------------------------------------------------------ */
+/*  MX_USART3_UART_Init — ESP8266  PB10(TX) / PB11(RX)  115200 8N1   */
+/*  野火指南者板 ESP8266 固定接在 USART3                               */
+/*  开启全局中断，供 HAL_UART_Receive_IT 使用                          */
+/* ------------------------------------------------------------------ */
+void MX_USART3_UART_Init(void)
+{
+    __HAL_RCC_GPIOB_CLK_ENABLE();
+    __HAL_RCC_USART3_CLK_ENABLE();
+
+    GPIO_InitTypeDef gpio = {0};
+
+    gpio.Pin   = GPIO_PIN_10;         /* PB10 TX */
+    gpio.Mode  = GPIO_MODE_AF_PP;
+    gpio.Speed = GPIO_SPEED_FREQ_HIGH;
+    HAL_GPIO_Init(GPIOB, &gpio);
+
+    gpio.Pin   = GPIO_PIN_11;         /* PB11 RX */
+    gpio.Mode  = GPIO_MODE_INPUT;
+    gpio.Pull  = GPIO_NOPULL;
+    HAL_GPIO_Init(GPIOB, &gpio);
+
+    huart3.Instance          = USART3;
+    huart3.Init.BaudRate     = 115200;
+    huart3.Init.WordLength   = UART_WORDLENGTH_8B;
+    huart3.Init.StopBits     = UART_STOPBITS_1;
+    huart3.Init.Parity       = UART_PARITY_NONE;
+    huart3.Init.Mode         = UART_MODE_TX_RX;
+    huart3.Init.HwFlowCtl    = UART_HWCONTROL_NONE;
+    huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+    if (HAL_UART_Init(&huart3) != HAL_OK)
+        while (1);
+
+    HAL_NVIC_SetPriority(USART3_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(USART3_IRQn);
+}
+
+/* ------------------------------------------------------------------ */
+/*  USART1 调试工具函数                                                */
+/* ------------------------------------------------------------------ */
 void UART_SendByte(uint8_t byte)
 {
     HAL_UART_Transmit(&huart1, &byte, 1, HAL_MAX_DELAY);
@@ -60,18 +101,16 @@ int UART_Printf(const char *fmt, ...)
     va_start(args, fmt);
     int len = vsnprintf(_printf_buf, sizeof(_printf_buf), fmt, args);
     va_end(args);
-
     if (len > 0)
         UART_SendBytes((const uint8_t *)_printf_buf, (uint16_t)len);
-
     return len;
 }
 
 uint8_t UART_ReceiveByte(uint32_t timeout_ms)
 {
-    uint8_t byte = 0;
-    HAL_UART_Receive(&huart1, &byte, 1, timeout_ms);
-    return byte;
+    uint8_t b = 0;
+    HAL_UART_Receive(&huart1, &b, 1, timeout_ms);
+    return b;
 }
 
 HAL_StatusTypeDef UART_ReceiveBytes(uint8_t *buf, uint16_t len, uint32_t timeout_ms)

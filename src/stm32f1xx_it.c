@@ -40,6 +40,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stm32f1xx_it.h"
+#include "uart.h"   /* huart2 */
 
 /** @addtogroup STM32F1xx_HAL_Examples
   * @{
@@ -174,6 +175,12 @@ void SysTick_Handler(void)
 /*void PPP_IRQHandler(void)
 {
 }*/
+
+/* USART3 全局中断 — 供 ESP8266 接收中断使用 */
+void USART3_IRQHandler(void)
+{
+    HAL_UART_IRQHandler(&huart3);
+}
 
 
 /**
