@@ -50,7 +50,12 @@ extern ESP_Stats g_esp_stats;
 
 /* ===== 公开接口 ===== */
 ESP_Result ESP_Init(void);
-ESP_Result ESP_PostSensor(float voltage, bool led_on, float *out_thr);
+/* voltage: 电压V, led_on: LED状态, light: 光照原始值0-4095, temp: 温度°C
+ * out_thr: 返回电压阈值, out_light_thr: 返回光照阈值, out_temp_thr: 返回温度阈值 */
+ESP_Result ESP_PostSensor(float voltage, bool led_on, uint32_t light,
+                          uint8_t temp,
+                          float *out_thr, uint32_t *out_light_thr,
+                          uint8_t *out_temp_thr);
 void       ESP_UART_IRQHandler(void);
 
 #endif /* __ESP8266_H */

@@ -181,15 +181,20 @@ ESP_Result ESP_Init(void)
     return ESP_OK;
 }
 
-ESP_Result ESP_PostSensor(float voltage, bool led_on, float *out_thr)
+ESP_Result ESP_PostSensor(float voltage, bool led_on, uint32_t light,
+                          uint8_t temp,
+                          float *out_thr, uint32_t *out_light_thr,
+                          uint8_t *out_temp_thr)
 {
-    static char body[48];
+    static char body[72];
     static char request[256];
     static char cmd_buf[48];
     static char response[768];
 
     // 构造JSON body
-    snprintf(body, sizeof(body), "{\"v\":%.3f,\"led\":%d}", voltage, led_on ? 1 : 0);
+    snprintf(body, sizeof(body),
+             "{\"v\":%.3f,\"led\":%d,\"light\":%lu,\"temp\":%d}",
+             voltage, led_on ? 1 : 0, (unsigned long)light, (int)temp);
     int body_len = (int)strlen(body);
 
     // 构造HTTP POST请求
@@ -252,14 +257,33 @@ ESP_Result ESP_PostSensor(float voltage, bool led_on, float *out_thr)
     /* 6. 关闭连接 */
     esp_cipclose();
 
-    /* 7. 从HTTP响应中解析JSON body: {"thr":1.500} */
+    /* 7. 从HTTP响应中解析JSON body
+     *    期望格式: {"thr":1.500,"light_thr":2000}
+     *    两个字段均为可选，缺失时保持调用方传入的原值 */
     char *json_start = strchr(response, '{');
-    if (json_start && out_thr) {
-        char *thr_key = strstr(json_start, "\"thr\":");
-        if (thr_key) {
-            float val = strtof(thr_key + 6, NULL);
-            if (val > 0.0f && val <= 3.3f) {
-                *out_thr = val;
+    if (json_start) {
+        if (out_thr) {
+            char *thr_key = strstr(json_start, "\"thr\":");
+            if (thr_key) {
+                float val = strtof(thr_key + 6, NULL);
+                if (val > 0.0f && val <= 3.3f)
+                    *out_thr = val;
+            }
+        }
+        if (out_light_thr) {
+            char *lt_key = strstr(json_start, "\"light_thr\":");
+            if (lt_key) {
+                long val = strtol(lt_key + 12, NULL, 10);
+                if (val >= 0 && val <= 4095)
+                    *out_light_thr = (uint32_t)val;
+            }
+        }
+        if (out_temp_thr) {
+            char *tt_key = strstr(json_start, "\"temp_thr\":");
+            if (tt_key) {
+                long val = strtol(tt_key + 11, NULL, 10);
+                if (val >= 0 && val <= 50)
+                    *out_temp_thr = (uint8_t)val;
             }
         }
     }

@@ -26,6 +26,8 @@
 #include "adc.h"
 #include "gpio.h"
 #include "lcd.h"
+#include "light_sensor.h"
+#include "dht11.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
@@ -76,20 +78,6 @@ void SystemClock_Config(void)
         while (1);
 }
 
-/* ===== ADC读取 ===== */
-static float ADC_ReadVoltage(void)
-{
-    HAL_ADC_Start(&hadc1);
-    if (HAL_ADC_PollForConversion(&hadc1, 10) != HAL_OK) {
-        HAL_ADC_Stop(&hadc1);
-        return 0.0f;
-    }
-    uint32_t raw = HAL_ADC_GetValue(&hadc1);
-    HAL_ADC_Stop(&hadc1);
-    // 12位ADC，参考电压3.3V
-    return (float)raw / 4095.0f * 3.3f;
-}
-
 /* ===== 主函数 ===== */
 int main(void)
 {
@@ -98,6 +86,8 @@ int main(void)
     SystemClock_Config();
     MX_GPIO_Init();
     MX_ADC1_Init();
+    LightSensor_Init();
+    DHT11_Init();
     MX_USART1_UART_Init();
     MX_USART3_UART_Init();
     LCD_DisplayInit();
@@ -139,20 +129,36 @@ int main(void)
     }
 
     /* ===== 主循环变量 ===== */
-    float voltage   = 0.0f;
-    float threshold = 1.65f;  // 默认阈值，手机下发后更新
-    bool  led_on    = false;
+    float    voltage       = 0.0f;
+    float    v_threshold   = 1.65f;   /* 电压阈值，手机下发后更新 */
+    uint32_t light         = 0;
+    uint32_t light_thr     = 2000;    /* 光照阈值（0-4095），手机下发后更新 */
+    uint8_t  temp          = 0;       /* 温度°C */
+    uint8_t  temp_thr      = 30;      /* 温度阈值°C，手机下发后更新 */
+    bool     led_on        = false;
     uint32_t last_send_tick = 0;
-    const uint32_t SEND_INTERVAL_MS = 3000; // 每3秒发送一次，给ESP8266和手机服务端足够时间
+    uint32_t last_dht_tick  = 0;
+    const uint32_t SEND_INTERVAL_MS = 3000;
+    const uint32_t DHT_INTERVAL_MS  = 2000;
 
     /* ===== 主循环 ===== */
     while (1)
     {
-        /* 1. 读ADC电压 */
+        /* 1. 读取传感器 */
         voltage = ADC_ReadVoltage();
+        light   = LightSensor_ReadRaw();
 
-        /* 2. 与阈值比较，驱动LED */
-        bool new_led = (voltage > threshold);
+        /* DHT11 每 2s 读一次（协议需要至少 1s 间隔） */
+        if (HAL_GetTick() - last_dht_tick >= DHT_INTERVAL_MS) {
+            last_dht_tick = HAL_GetTick();
+            DHT11_Data_t dht;
+            if (DHT11_Read(&dht) == HAL_OK) {
+                temp = dht.temp_int;
+            }
+        }
+
+        /* 2. LED 判断：电压、光照或温度任一超阈值 → 报警 */
+        bool new_led = (voltage > v_threshold) || (light > light_thr) || (temp > temp_thr);
         if (new_led != led_on) {
             led_on = new_led;
             if (led_on) {
@@ -164,26 +170,30 @@ int main(void)
             }
         }
 
-        /* 3. 刷新LCD（每次循环都更新，频率由ADC+通信自然限速） */
-        LCD_UpdateSensor(voltage, threshold, led_on);
+        /* 3. 刷新 LCD */
+        LCD_UpdateSensor(voltage, v_threshold, light, light_thr,
+                         temp, temp_thr, led_on);
 
-        /* 3. 定时向手机发送数据，取回阈值 */
+        /* 4. 定时向手机发送数据，取回阈值 */
         if (HAL_GetTick() - last_send_tick >= SEND_INTERVAL_MS) {
             last_send_tick = HAL_GetTick();
 
-            float new_thr = threshold; // 若通信失败保持原值
-            ESP_Result r = ESP_PostSensor(voltage, led_on, &new_thr);
+            float    new_v_thr = v_threshold;
+            uint32_t new_l_thr = light_thr;
+            uint8_t  new_t_thr = temp_thr;
+            ESP_Result r = ESP_PostSensor(voltage, led_on, light, temp,
+                                          &new_v_thr, &new_l_thr, &new_t_thr);
 
             if (r == ESP_OK) {
-                threshold = new_thr;
-                DBG("POST OK  V=%.3f LED=%d THR=%.3f", voltage, led_on, threshold);
+                v_threshold = new_v_thr;
+                light_thr   = new_l_thr;
+                temp_thr    = new_t_thr;
+                DBG("POST OK  V=%.3f L=%lu T=%d LED=%d VTHR=%.3f LTHR=%lu TTHR=%d",
+                    voltage, (unsigned long)light, (int)temp, led_on,
+                    v_threshold, (unsigned long)light_thr, (int)temp_thr);
             } else {
-                DBG("POST FAIL(code=%d) V=%.3f LED=%d THR=%.3f", r, voltage, led_on, threshold);
-                // 通信失败：红灯短闪一次作为提示（不影响LED逻辑）
-                uint8_t old_led_state = HAL_GPIO_ReadPin(LED_RED_PORT, LED_RED_PIN);
-                LED_ON(LED_RED_PORT, LED_RED_PIN);
-                HAL_Delay(50);
-                HAL_GPIO_WritePin(LED_RED_PORT, LED_RED_PIN, (GPIO_PinState)old_led_state);
+                DBG("POST FAIL(code=%d) V=%.3f L=%lu T=%d LED=%d",
+                    r, voltage, (unsigned long)light, (int)temp, led_on);
             }
         }
 
