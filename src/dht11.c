@@ -15,7 +15,7 @@ static void delay_us(uint32_t us)
     while ((DWT->CYCCNT - start) < cycles);
 }
 
-/* ===== GPIO 方向切换（与参考代码 DHT11_Mode_Out_PP / DHT11_Mode_IPU 对应） ===== */
+/* ===== GPIO 方向切换 ===== */
 static void DHT11_Mode_Out_PP(void)
 {
     GPIO_InitTypeDef g = {0};
@@ -38,23 +38,28 @@ static void DHT11_Mode_IPU(void)
 #define DHT11_Dout_0    HAL_GPIO_WritePin(DHT11_PORT, DHT11_PIN, GPIO_PIN_RESET)
 #define DHT11_Dout_IN() HAL_GPIO_ReadPin(DHT11_PORT, DHT11_PIN)
 
-/* ===== 读一字节，MSB 先（与参考 DHT11_ReadByte 完全对应） ===== */
+/* 超时计数上限：约等于 500µs（72MHz 下每次循环 ~3 cycles） */
+#define DHT11_WAIT_LIMIT 12000U
+
+/* ===== 读一字节 MSB 先，含超时保护 ===== */
 static uint8_t DHT11_ReadByte(void)
 {
     uint8_t i, val = 0;
-    for (i = 0; i < 8; i++) {
-        /* 等待每 bit 起始 50µs 低电平结束 */
-        while (DHT11_Dout_IN() == GPIO_PIN_RESET);
+    uint32_t t;
 
-        /* 延时 40µs 后采样：
-         *   仍为高 → '1'（高电平持续 ~70µs）
-         *   已变低 → '0'（高电平只持续 ~26µs） */
+    for (i = 0; i < 8; i++) {
+        /* 等每 bit 起始 50µs 低电平结束 */
+        t = 0;
+        while (DHT11_Dout_IN() == GPIO_PIN_RESET && ++t < DHT11_WAIT_LIMIT);
+
+        /* 延时 40µs 后采样 */
         delay_us(40);
 
         if (DHT11_Dout_IN() == GPIO_PIN_SET) {
-            val |= (uint8_t)(0x80u >> i);   /* MSB first */
-            /* 等待 '1' 的高电平结束 */
-            while (DHT11_Dout_IN() == GPIO_PIN_SET);
+            val |= (uint8_t)(0x80u >> i);
+            /* 等 '1' 的高电平结束 */
+            t = 0;
+            while (DHT11_Dout_IN() == GPIO_PIN_SET && ++t < DHT11_WAIT_LIMIT);
         }
     }
     return val;
@@ -71,18 +76,12 @@ void DHT11_Init(void)
     HAL_Delay(1);
 }
 
-/*
- * 与参考 DHT11_Read_TempAndHumidity 逻辑完全对应：
- *   1. 拉低 18ms → 拉高 30µs → 切输入
- *   2. 判断 DHT11 应答（立即低电平）
- *   3. 等过 80µs 低 + 80µs 高
- *   4. 读 40bit → 校验
- */
 HAL_StatusTypeDef DHT11_Read(DHT11_Data_t *out)
 {
+    uint32_t t;
     uint8_t humi_int, humi_deci, temp_int, temp_deci, checksum;
 
-    /* 1. 起始信号 */
+    /* 1. 起始信号：拉低 18ms，拉高 30µs */
     DHT11_Mode_Out_PP();
     DHT11_Dout_0;
     HAL_Delay(18);
@@ -94,9 +93,12 @@ HAL_StatusTypeDef DHT11_Read(DHT11_Data_t *out)
 
     if (DHT11_Dout_IN() == GPIO_PIN_RESET) {
         /* 等过 ~80µs 低电平应答 */
-        while (DHT11_Dout_IN() == GPIO_PIN_RESET);
+        t = 0;
+        while (DHT11_Dout_IN() == GPIO_PIN_RESET && ++t < DHT11_WAIT_LIMIT);
+
         /* 等过 ~80µs 高电平准备 */
-        while (DHT11_Dout_IN() == GPIO_PIN_SET);
+        t = 0;
+        while (DHT11_Dout_IN() == GPIO_PIN_SET  && ++t < DHT11_WAIT_LIMIT);
 
         /* 3. 读 40bit */
         humi_int  = DHT11_ReadByte();
@@ -117,8 +119,8 @@ HAL_StatusTypeDef DHT11_Read(DHT11_Data_t *out)
             out->humi_deci = humi_deci;
             return HAL_OK;
         }
-        return HAL_ERROR;   /* 校验失败 */
+        return HAL_ERROR;
     }
 
-    return HAL_ERROR;   /* 无应答 */
+    return HAL_ERROR;
 }

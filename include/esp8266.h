@@ -8,7 +8,7 @@
 /* ===== 用户配置（按实际环境修改） ===== */
 #define AP_SSID           "VTL_Sensor"
 #define AP_PASS           "12345678"
-#define PHONE_IP          "192.168.4.2"
+#define PHONE_IP          "192.168.1.2"
 #define PHONE_PORT        8080
 
 #define ESP_TIMEOUT_SHORT 3000U   /* ms */

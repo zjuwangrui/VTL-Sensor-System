@@ -172,7 +172,7 @@ int main(void)
 
         /* 3. 刷新 LCD */
         LCD_UpdateSensor(voltage, v_threshold, light, light_thr,
-                         temp, temp_thr, led_on);
+                         temp, temp_thr);
 
         /* 4. 定时向手机发送数据，取回阈值 */
         if (HAL_GetTick() - last_send_tick >= SEND_INTERVAL_MS) {
